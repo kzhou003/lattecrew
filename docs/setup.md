@@ -2,7 +2,7 @@
 
 The order matters: each phase depends on the one before it. Every phase ends with a **check**; do not continue until it passes.
 
-Names used below: the GPU machine is `latte` (an SSH `Host` alias on the Mac), the repo is cloned at `~/LatteCrew` on both machines.
+Names used below: the GPU machine is `latte` (an SSH `Host` alias on the Mac), the repo is cloned at `~/lattecrew` on both machines.
 
 ## Phase 0. Machines and access
 
@@ -25,7 +25,7 @@ Names used below: the GPU machine is `latte` (an SSH `Host` alias on the Mac), t
 ## Phase 1. Models on the GPU
 
 ```bash
-ssh latte 'cd ~/LatteCrew && models/install.sh'
+ssh latte 'cd ~/lattecrew && models/install.sh'
 ```
 This creates `~/latte-models/env` (vLLM 0.32 + vLLM-Omni 0.32, torch for CUDA 13), downloads the weights, installs the serve scripts and starts `llama-swap` on `127.0.0.1:8100`. Download the llama-swap binary first (the script tells you where).
 
@@ -55,7 +55,7 @@ It costs ~40% of the KV cache (140K → 78K tokens).
 ## Phase 2. crewd
 
 ```bash
-ssh latte 'cd ~/LatteCrew && crew/install.sh'
+ssh latte 'cd ~/lattecrew && crew/install.sh'
 ```
 Installs to `~/latte-crew/`, links `~/.local/bin/crew`, starts the `crewd` user service. Edit `~/latte-crew/config.json` for budgets, concurrency, timeouts and `repo_roots` (where your repos live).
 
@@ -83,7 +83,7 @@ sudo systemctl restart kirocrew
 
 **`@qwen` gateway on latte.** OpenCode on the local model, its own home and port:
 ```bash
-ssh latte 'cd ~/LatteCrew && gateways/latte/setup-qwen-gateway.sh'
+ssh latte 'cd ~/lattecrew && gateways/latte/setup-qwen-gateway.sh'
 ```
 
 **Job notifications.** Copy [`gateways/latte/latte_notify.py`](../gateways/latte/latte_notify.py) to `~/.kiro/crew/crons/` on latte and schedule it as a script cron in the dashboard (every 2 minutes). It posts finished or blocked jobs to your Slack DM.

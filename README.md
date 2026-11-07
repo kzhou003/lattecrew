@@ -51,13 +51,13 @@ RTX 5090 32 GB
 Assumptions: a Linux machine with an NVIDIA GPU (32 GB) reachable from the Mac as `ssh latte` (key auth, Tailscale or LAN), Python 3.12 on both, Node 22 on latte, Claude Code logged in on both machines, and [Kiro Crew](https://github.com/kirodotdev/KiroCrew) installed.
 
 ```bash
-git clone https://github.com/kzhou003/LatteCrew.git && cd LatteCrew
-rsync -a --exclude bench/out ./ latte:LatteCrew/      # copy to the GPU machine
+git clone https://github.com/kzhou003/lattecrew.git && cd lattecrew
+rsync -a --exclude bench/out ./ latte:lattecrew/      # copy to the GPU machine
 
 # GPU machine
-ssh latte 'cd LatteCrew && models/install.sh'          # vLLM env, weights, llama-swap service
-ssh latte 'cd LatteCrew && crew/install.sh'            # crewd service, `crew` CLI
-ssh latte 'cd LatteCrew && python3 -m unittest discover -s tests'
+ssh latte 'cd lattecrew && models/install.sh'          # vLLM env, weights, llama-swap service
+ssh latte 'cd lattecrew && crew/install.sh'            # crewd service, `crew` CLI
+ssh latte 'cd lattecrew && python3 -m unittest discover -s tests'
 
 # Mac
 gateways/mac/install.sh                                # MCP bridges, OpenCode config, tunnel plist
