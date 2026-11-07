@@ -1,0 +1,27 @@
+# One model on the GPU at a time. All backends are local only.
+healthCheckTimeout: 300
+logLevel: info
+startPort: 8101
+models:
+  qwen3.8:
+    cmd: __HOME__/latte-models/bin/serve-qwen.sh
+    proxy: http://127.0.0.1:8101
+    checkEndpoint: /health
+  z-image:
+    cmd: __HOME__/latte-models/bin/serve-zimage.sh
+    proxy: http://127.0.0.1:8102
+    useModelName: Tongyi-MAI/Z-Image-Turbo
+    checkEndpoint: /health
+    ttl: 300
+  qwen-tts:
+    cmd: __HOME__/latte-models/bin/serve-tts.sh
+    proxy: http://127.0.0.1:8103
+    useModelName: Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
+    checkEndpoint: /health
+    ttl: 300
+  wan2.2-ti2v:
+    cmd: __HOME__/latte-models/bin/serve-wan.sh
+    proxy: http://127.0.0.1:8104
+    useModelName: Wan-AI/Wan2.2-TI2V-5B-Diffusers
+    checkEndpoint: /health
+    ttl: 300

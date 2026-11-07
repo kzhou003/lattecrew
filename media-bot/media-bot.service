@@ -1,0 +1,11 @@
+[Unit]
+Description=LatteCrew media bots (@z-image, @qwen-tts)
+After=network-online.target llama-swap.service
+
+[Service]
+ExecStart=%h/latte-models/env/bin/python %h/latte-crew/media_bot.py serve
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

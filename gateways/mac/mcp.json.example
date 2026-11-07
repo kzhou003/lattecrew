@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "latte-crew": {
+      "command": "__HOME__/.local/bin/latte-crew-mcp",
+      "autoApprove": [
+        "crew_task",
+        "crew_team",
+        "crew_status",
+        "crew_logs",
+        "crew_diff",
+        "crew_reply",
+        "crew_cancel",
+        "crew_events",
+        "crew_repos",
+        "crew_health"
+      ],
+      "args": []
+    }
+  }
+}

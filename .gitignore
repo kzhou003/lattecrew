@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.DS_Store
+crew/config.json
+crew/var/
+bench/out/
+bench/collab/hidden/
+bench/collab/extra/
+bench/collab/results.jsonl
+bench/collab/scored.json
+bench/report/*.html
+.env
+env

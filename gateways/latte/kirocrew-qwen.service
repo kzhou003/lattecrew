@@ -1,0 +1,16 @@
+[Unit]
+Description=Kiro Crew gateway for @qwen (OpenCode on local vLLM)
+After=network-online.target llama-swap.service
+
+[Service]
+Environment=KIROCREW_HOME=%h/.kiro/crew-qwen
+Environment=KIROCREW_PORT=5477
+Environment=PATH=__NODE_BIN__:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/.kiro/crew-venv/bin/kirocrew gateway --no-open --port 5477
+Restart=on-failure
+RestartSec=10
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

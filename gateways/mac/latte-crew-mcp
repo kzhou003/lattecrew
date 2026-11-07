@@ -1,0 +1,4 @@
+#!/bin/sh
+# MCP stdio bridge: the Kiro Crew bot on this Mac talks to crew.py on latte through ssh.
+exec /usr/bin/ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+  latte '/usr/bin/python3 ~/latte-crew/crew.py mcp'

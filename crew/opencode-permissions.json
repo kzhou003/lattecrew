@@ -1,0 +1,40 @@
+{
+  "permission": {
+    "edit": "allow",
+    "webfetch": "deny",
+    "external_directory": "deny",
+    "bash": {
+      "*": "allow",
+      "git push*": "deny",
+      "git remote*": "deny",
+      "git config --global*": "deny",
+      "sudo*": "deny",
+      "su *": "deny",
+      "ssh*": "deny",
+      "scp*": "deny",
+      "rsync*": "deny",
+      "gh *": "deny",
+      "curl*": "deny",
+      "wget*": "deny",
+      "systemctl*": "deny",
+      "crontab*": "deny",
+      "shutdown*": "deny",
+      "reboot*": "deny",
+      "*.ssh*": "deny",
+      "*.aws*": "deny",
+      "*credentials*": "deny"
+    }
+  },
+  "provider": {
+    "latte": {
+      "models": {
+        "qwen3.8": {
+          "limit": {
+            "context": 65536,
+            "output": 32768
+          }
+        }
+      }
+    }
+  }
+}

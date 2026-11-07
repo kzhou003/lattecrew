@@ -1,0 +1,14 @@
+[Unit]
+Description=LatteCrew GPU scheduler (llama-swap, local only)
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/latte-models
+ExecStart=%h/latte-models/bin/llama-swap --config %h/latte-models/llama-swap.yaml --listen 127.0.0.1:8100
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,45 @@
+{
+  "max_instances": 3,
+  "max_jobs": 3,
+  "daily_budget_usd": 40,
+  "task_budget_usd": 8,
+  "team_budget_usd": 20,
+  "max_rounds": 2,
+  "max_slices": 3,
+  "timeout_min": {
+    "low": 45,
+    "medium": 90,
+    "high": 180
+  },
+  "rate_limit_wait_min": 15,
+  "rate_limit_max_wait_hours": 6,
+  "model": "",
+  "role_models": {},
+  "permission_mode": "auto",
+  "repo_roots": [
+    "~/development",
+    "~"
+  ],
+  "disallowed_tools": [
+    "Bash(git push *)",
+    "Bash(git push)",
+    "Bash(sudo *)",
+    "Bash(su *)",
+    "Bash(ssh *)",
+    "Bash(scp *)",
+    "Bash(rsync *)",
+    "Bash(gh *)",
+    "Bash(git config --global *)",
+    "Bash(systemctl *)",
+    "Bash(reboot*)",
+    "Bash(shutdown*)",
+    "Bash(crontab *)",
+    "Read(~/.ssh/**)",
+    "Read(~/.claude/.credentials.json)",
+    "Read(~/.aws/**)"
+  ],
+  "local_budget_usd": 3,
+  "local_rounds": 2,
+  "local_model": "latte/qwen3.8",
+  "local_review_model": "sonnet"
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "latte/qwen3.8",
+  "small_model": "latte/qwen3.8",
+  "autoupdate": false,
+  "share": "disabled",
+  "provider": {
+    "latte": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Latte local models",
+      "options": {
+        "baseURL": "http://127.0.0.1:18100/v1",
+        "timeout": 600000
+      },
+      "models": {
+        "qwen3.8": {
+          "name": "Qwen3.8-27B 4-bit (local)",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": {
+            "context": 65536,
+            "output": 8192
+          }
+        }
+      }
+    }
+  }
+}
