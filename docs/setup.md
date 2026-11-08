@@ -31,7 +31,7 @@ This creates `~/latte-models/env` (vLLM 0.32 + vLLM-Omni 0.32, torch for CUDA 13
 
 | Model | Name in requests | Port | Notes |
 |---|---|---|---|
-| Qwen3.8-27B AWQ INT4 | `qwen3.8` | 8101 | context 65,536, 2 sequences, prefix caching, tool and reasoning parsers |
+| Qwen3.8-27B AWQ INT4 | `qwen3.8` | 8101 | context 131,072, FP8 KV cache, MTP speculative decoding (3 draft tokens), 2 sequences, prefix caching, tool and reasoning parsers |
 | Z-Image-Turbo | `z-image` | 8102 | `/v1/images/generations` |
 | Qwen3-TTS-12Hz-1.7B-CustomVoice | `qwen-tts` | 8103 | `/v1/audio/speech` |
 | Wan2.2-TI2V-5B | `wan2.2-ti2v` | 8104 | multipart `/upstream/wan2.2-ti2v/v1/videos/sync`, CPU offload |
@@ -45,12 +45,7 @@ ssh latte 'curl -s 127.0.0.1:8100/v1/chat/completions -H "Content-Type: applicat
 ```
 The first call loads the model (~60 s).
 
-Optional, measured 1.5–2× faster decode: MTP speculative decoding. `serve-qwen.sh` appends `$EXTRA` to the vLLM command, so add to the `qwen3.8` entry in `~/latte-models/llama-swap.yaml`:
-```yaml
-    env:
-      - 'EXTRA=--speculative-config {"method":"qwen3_5_mtp","num_speculative_tokens":3}'
-```
-It costs ~40% of the KV cache (140K → 78K tokens).
+Defaults, measured in [lattecrew_bench](https://github.com/kzhou003/lattecrew_bench) (E11, E12): 128K context with an FP8 KV cache and MTP speculative decoding. That gives ~150–200K tokens of KV cache, finds a planted fact at 129K tokens, and decodes ~118 tok/s instead of ~78. The FP8 KV path JIT-compiles kernels once and needs a CUDA compiler; without sudo, install one with conda (`conda create -p ~/latte-models/cuda13 -c conda-forge cuda-nvcc=13.0 cuda-version=13.0 cuda-cudart-dev cuda-cccl cuda-nvrtc-dev`, then `ln -s targets/x86_64-linux/lib ~/latte-models/cuda13/lib64`); `serve-qwen.sh` uses it when present. To go back to the old setup: `CTX=65536 KV_DTYPE=auto MTP=0`.
 
 ## Phase 2. crewd
 
@@ -123,10 +118,10 @@ What `claude-qwen` sets, and why:
 | `ANTHROPIC_AUTH_TOKEN` | `local` | vLLM ignores it; it also keeps your Claude subscription out of this process |
 | `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL`, `CLAUDE_CODE_SUBAGENT_MODEL` | `qwen3.8` | every model alias, including subagents, goes to Qwen |
 | `CLAUDE_CODE_EFFORT_LEVEL` | `medium` (`QWEN_EFFORT`) | Claude Code's default `high` is rejected: Qwen's chat template accepts only `xhigh`, `medium`, `low` |
-| `CLAUDE_CODE_MAX_CONTEXT_TOKENS`, `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | 65536 | the served context; Claude Code otherwise assumes a much larger window and compacts too late |
-| `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | 16384 | leaves ~49K for the prompt (Claude Code's own prompt is ~22K) |
+| `CLAUDE_CODE_MAX_CONTEXT_TOKENS`, `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | 131072 | the served context; Claude Code otherwise assumes 200K for an unknown model and compacts too late |
+| `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | 8192 | a smaller output reserve leaves more room; Claude Code's own prompt is ~11K, so ~100K is left for work |
 
-Measured: a one-tool question takes 4–8 s in either CLI. Claude.ai connectors are off in a `claude-qwen` session (expected: another auth source is set).
+Measured: a one-tool question takes 4–8 s in either CLI. With 128K, `claude-qwen -p` finished benchmark task t4 on its own in 84 s (24 turns, wrote 21 tests, hidden tests 17/17). At 65K the same kind of session thrashed on compaction (7 compactions, ~15 minutes), so do not run Claude Code on less than ~100K. Claude.ai connectors are off in a `claude-qwen` session (expected: another auth source is set).
 
 **Check:** `claude-qwen -p "What is 17*23?"` and `opencode-qwen run "What is 17*23?"` both print 391 on both machines.
 

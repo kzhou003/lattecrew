@@ -15,3 +15,4 @@
 | FlashInfer JIT link error `cannot find -lcudart` | conda puts CUDA libs in `targets/x86_64-linux/lib` | `ln -s targets/x86_64-linux/lib lib64` in the toolkit dir (it gave no speed-up anyway) |
 | `pkill -f pattern` over ssh kills your own ssh | the remote command line contains the pattern | put the kill in a script file and run that |
 | Deleting a model directory frees no disk | HF cache keeps weights in `hub/blobs/` | remove the unreferenced blobs too |
+| `claude-qwen` compacts again and again, then stops with a thrashing error | 65K context minus Claude Code's prompt, output reserve and compaction margin leaves ~20K to work with | serve Qwen at 128K (FP8 KV cache) and set the window in `claude-qwen`; both are the defaults now |

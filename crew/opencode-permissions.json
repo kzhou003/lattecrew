@@ -30,7 +30,7 @@
       "models": {
         "qwen3.8": {
           "limit": {
-            "context": 65536,
+            "context": 131072,
             "output": 32768
           }
         }
