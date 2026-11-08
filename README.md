@@ -74,6 +74,8 @@ From Slack or Claude Code on the Mac:
 - "@qwen add a --json flag to the CLI" → `crew_local`: Qwen writes, Claude reviews read-only, up to two rounds.
 - "@z-image a lighthouse at golden hour", "@qwen-tts read this aloud", "@wan a cat walking on a windowsill".
 
+Directly in a terminal, on either machine: `claude-qwen` (Claude Code on the local Qwen) or `opencode-qwen` (see [setup, phase 6](docs/setup.md#phase-6-claude-code-and-opencode-on-the-local-model)).
+
 On latte: `crew status`, `crew logs <job>`, `crew diff <job>`, `crew reply <job> "..."`. Results stay on local branches `crew/<job>`; nothing is pushed or merged by an agent.
 
 ## What we measured

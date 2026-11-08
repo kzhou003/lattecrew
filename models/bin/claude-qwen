@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Claude Code on the local Qwen3.8-27B (vLLM on the GPU machine, through llama-swap).
+# Same flags as `claude`. Works on the GPU machine (:8100) and on the Mac through the SSH tunnel (:18100).
+#   claude-qwen                 interactive
+#   claude-qwen -p "question"   one shot
+# Env: QWEN_URL to force an endpoint, QWEN_EFFORT=low|medium|xhigh (Qwen's template has no "high").
+set -euo pipefail
+URL=${QWEN_URL:-}
+if [ -z "$URL" ]; then
+  for u in http://127.0.0.1:8100 http://127.0.0.1:18100; do
+    curl -s -m 3 "$u/v1/models" >/dev/null 2>&1 && { URL=$u; break; }
+  done
+fi
+[ -n "$URL" ] || { echo "claude-qwen: no model gateway on 127.0.0.1:8100 (GPU machine) or :18100 (Mac tunnel)" >&2; exit 1; }
+unset ANTHROPIC_API_KEY
+export ANTHROPIC_BASE_URL=$URL ANTHROPIC_AUTH_TOKEN=local
+export ANTHROPIC_MODEL=qwen3.8 ANTHROPIC_DEFAULT_OPUS_MODEL=qwen3.8 ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3.8
+export ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3.8 CLAUDE_CODE_SUBAGENT_MODEL=qwen3.8
+export CLAUDE_CODE_MAX_CONTEXT_TOKENS=65536 CLAUDE_CODE_AUTO_COMPACT_WINDOW=65536 CLAUDE_CODE_MAX_OUTPUT_TOKENS=16384
+export CLAUDE_CODE_EFFORT_LEVEL=${QWEN_EFFORT:-medium}
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_TELEMETRY=1
+exec claude "$@"

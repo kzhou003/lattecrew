@@ -8,6 +8,7 @@
 | `bin/serve-zimage.sh` | Z-Image-Turbo on :8102 (vLLM-Omni) |
 | `bin/serve-tts.sh` | Qwen3-TTS CustomVoice on :8103 |
 | `bin/serve-wan.sh` | Wan2.2-TI2V-5B on :8104 with CPU offload |
+| `bin/claude-qwen`, `bin/opencode-qwen` | Claude Code / OpenCode on the local Qwen, on the GPU machine or the Mac (install to `~/.local/bin`) |
 | `bin/stop-gpu.sh` | stop any server and wait until VRAM is free |
 | `bin/watch-vram.sh`, `bin/video-test.sh` | VRAM/power logger and a video smoke test |
 | `llama-swap.yaml.template` | one model at a time on :8100; media models unload after 300 s idle |

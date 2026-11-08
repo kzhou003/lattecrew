@@ -103,6 +103,33 @@ ssh latte 'cd ~/lattecrew && gateways/latte/setup-qwen-gateway.sh'
 
 Kiro Crew's phone access publishes the dashboard with Tailscale Serve. If it reports that Serve is not enabled, open the link Tailscale prints and enable Serve for the tailnet once. The phone dashboard shows one session at a time; Slack is the better phone client.
 
-## Phase 6. Measure
+## Phase 6. Claude Code and OpenCode on the local model
+
+vLLM serves both the OpenAI API (`/v1/chat/completions`) and the Anthropic Messages API (`/v1/messages`, with `thinking` blocks), and llama-swap routes both. So both CLIs can run on Qwen, on the GPU machine (127.0.0.1:8100) and on the Mac (127.0.0.1:18100 through the tunnel LaunchAgent).
+
+```bash
+install -m 755 models/bin/claude-qwen models/bin/opencode-qwen ~/.local/bin/   # on each machine
+claude-qwen                      # Claude Code UI, tools, skills; the model is Qwen3.8 on the 5090
+claude-qwen -p "explain this repo"
+opencode-qwen                    # OpenCode with latte/qwen3.8
+opencode-qwen run "fix the failing test"
+```
+
+What `claude-qwen` sets, and why:
+
+| Setting | Value | Why |
+|---|---|---|
+| `ANTHROPIC_BASE_URL` | first of :8100 / :18100 that answers | same script on both machines |
+| `ANTHROPIC_AUTH_TOKEN` | `local` | vLLM ignores it; it also keeps your Claude subscription out of this process |
+| `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL`, `CLAUDE_CODE_SUBAGENT_MODEL` | `qwen3.8` | every model alias, including subagents, goes to Qwen |
+| `CLAUDE_CODE_EFFORT_LEVEL` | `medium` (`QWEN_EFFORT`) | Claude Code's default `high` is rejected: Qwen's chat template accepts only `xhigh`, `medium`, `low` |
+| `CLAUDE_CODE_MAX_CONTEXT_TOKENS`, `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | 65536 | the served context; Claude Code otherwise assumes a much larger window and compacts too late |
+| `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | 16384 | leaves ~49K for the prompt (Claude Code's own prompt is ~22K) |
+
+Measured: a one-tool question takes 4–8 s in either CLI. Claude.ai connectors are off in a `claude-qwen` session (expected: another auth source is set).
+
+**Check:** `claude-qwen -p "What is 17*23?"` and `opencode-qwen run "What is 17*23?"` both print 391 on both machines.
+
+## Phase 7. Measure
 
 See [`bench/README.md`](../bench/README.md). Run the probes after any change to the serving stack, and the collaboration benchmark after any change to roles, models or crewd.

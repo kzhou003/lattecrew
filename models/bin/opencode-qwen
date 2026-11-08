@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# OpenCode on the local Qwen3.8-27B. Same flags as `opencode`. Needs the `latte` provider in
+# ~/.config/opencode/opencode.json (models/opencode.latte.json on the GPU machine, gateways/mac/opencode.mac.json on the Mac).
+OC=$(command -v opencode 2>/dev/null || true)
+if [ -z "$OC" ] || [ ! -f "$OC" ]; then
+  OC=$(ls -1 "$HOME"/.nvm/versions/node/*/bin/opencode /opt/homebrew/bin/opencode /usr/local/bin/opencode 2>/dev/null | tail -1)
+fi
+[ -n "$OC" ] || { echo "opencode-qwen: opencode not found (npm i -g opencode-ai)" >&2; exit 1; }
+export PATH="$(dirname "$OC"):$PATH"     # opencode is a node script; keep its node first
+exec "$OC" -m latte/qwen3.8 "$@"
