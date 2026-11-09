@@ -24,12 +24,24 @@ class Fake(BaseHTTPRequestHandler):
         SEEN.append((self.path, body))
         data = json.dumps({"data": [{"b64_json": base64.b64encode(b"PNG").decode()}]}).encode() if "images" in self.path else b"WAV"
         if "chat/completions" in self.path:
-            data = json.dumps({"choices": [{"message": {"content": "ANSWER " + body["messages"][-1]["content"]}}]}).encode()
+            last = body["messages"][-1]
+            if body.get("tools") and last["role"] == "user" and "SEARCH" in last["content"]:
+                msg = {"content": "", "tool_calls": [{"id": "c1", "type": "function", "function": {
+                    "name": "web_search", "arguments": json.dumps({"query": "vllm mtp"})}}]}
+            elif last["role"] == "tool":
+                msg = {"content": "FINAL from " + last["content"][:40]}
+            else:
+                msg = {"content": "ANSWER " + last["content"]}
+            data = json.dumps({"choices": [{"message": msg}]}).encode()
         if "videos" in self.path:
             data = b"MP4"
         self.send_response(200); self.end_headers(); self.wfile.write(data)
 
     def do_GET(self):
+        if self.path.startswith("/search"):
+            data = json.dumps({"results": [{"title": "vLLM docs", "url": "https://docs.vllm.ai/x", "content": "MTP spec"}]}).encode()
+            self.send_response(200); self.end_headers(); self.wfile.write(data)
+            return
         if self.path == "/running":
             data = json.dumps({"running": [{"model": RUNNING[0], "state": "ready"}] if RUNNING[0] else []}).encode()
             self.send_response(200); self.end_headers(); self.wfile.write(data)
@@ -41,6 +53,8 @@ class Fake(BaseHTTPRequestHandler):
 server = HTTPServer(("127.0.0.1", 0), Fake)
 threading.Thread(target=server.serve_forever, daemon=True).start()
 m.GATEWAY = f"http://127.0.0.1:{server.server_port}"
+import chat_tools as ct
+ct.SEARX = m.GATEWAY
 
 
 class Slack:
@@ -52,6 +66,11 @@ class Slack:
 
     def files_upload_v2(self, **kw):
         self.files.append(kw)
+
+    token = "xoxb-test"
+
+    def chat_update(self, **kw):
+        self.posts.append(kw)
 
     def conversations_replies(self, **kw):
         return {"messages": self.thread}
@@ -234,4 +253,52 @@ class Chat(unittest.TestCase):
         self.bot.handle(event("<@UBOT> hi", user="X", user_team="T9"))
         self.assertEqual(SEEN, [])
         self.assertEqual(len(self.slack.posts), 1)
+
+
+class ChatTools(unittest.TestCase):
+    def setUp(self):
+        SEEN.clear()
+        RUNNING[0] = "qwen3.8"
+        self.slack = Slack()
+        self.bot = m.ChatBot(self.slack, "OWNER", allowed="*", team="T1", bot_user="UBOT", limits={"chat": 100, "web": 1})
+
+    def test_tool_loop_searches_then_answers(self):
+        self.bot.handle(event("<@UBOT> SEARCH please", user="OWNER"))
+        bodies = [b for p, b in SEEN if p == "/v1/chat/completions"]
+        self.assertEqual(len(bodies), 2)
+        self.assertIn("tools", bodies[0])
+        self.assertEqual(bodies[1]["messages"][-1]["role"], "tool")
+        self.assertIn("docs.vllm.ai", bodies[1]["messages"][-1]["content"])
+        texts = [p["text"] for p in self.slack.posts]
+        self.assertTrue(any("正在搜索" in t for t in texts))
+        self.assertTrue(texts[-1].startswith("FINAL"))
+
+    def test_web_quota_applies_to_others(self):
+        self.assertTrue(self.bot.web_allowed("FRIEND"))
+        self.assertFalse(self.bot.web_allowed("FRIEND"))
+        self.assertTrue(self.bot.web_allowed("OWNER"))
+
+    def test_fetch_refuses_private_and_tailscale_addresses(self):
+        for url in ("http://127.0.0.1:8100/v1/models", "http://192.168.1.1/", "http://100.100.100.100/",
+                    "http://localhost/", "file:///etc/passwd", "http://[::1]/"):
+            self.assertTrue(ct.run_tool("fetch_url", json.dumps({"url": url})).startswith("Refused"), url)
+
+    def test_calculator(self):
+        self.assertEqual(ct.calculate("2**10 + sqrt(16)"), "1028.0")
+        self.assertEqual(ct.calculate("(3+4)*5"), "35")
+        for bad in ("__import__('os')", "2**100000", "open('x')"):
+            self.assertTrue(ct.run_tool("calculate", json.dumps({"expression": bad})).startswith("Tool error"))
+
+    def test_mrkdwn(self):
+        out = ct.to_mrkdwn("## Title\n**bold** and [docs](https://x.io/a)\n- item\n```\n**not touched**\n```")
+        self.assertIn("*Title*", out)
+        self.assertIn("*bold*", out)
+        self.assertIn("<https://x.io/a|docs>", out)
+        self.assertIn("• item", out)
+        self.assertIn("**not touched**", out)
+
+    def test_html_to_text(self):
+        title, body = ct.html_to_text("<html><head><title>T</title><script>x()</script></head><body><p>Hello</p><nav>menu</nav><p>World</p></body></html>")
+        self.assertEqual(title, "T")
+        self.assertEqual(body, "Hello\nWorld")
 

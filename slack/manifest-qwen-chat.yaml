@@ -1,6 +1,6 @@
 display_information:
   name: qwen-chat
-  description: Chat with Qwen3.8 running on the local RTX 5090. No tools, free for everyone in this workspace.
+  description: Chat with Qwen3.8 running on the local RTX 5090. Searches the web, reads pages and files. Free for everyone in this workspace.
   background_color: "#3d2c8a"
 features:
   app_home:
@@ -16,6 +16,7 @@ oauth_config:
       - app_mentions:read
       - channels:history
       - chat:write
+      - files:read
       - groups:history
       - im:history
       - im:read
