@@ -1,0 +1,8 @@
+# @qwen-chat and the media bots run in their own venv (~/latte-models/bot-env), apart from vLLM's.
+slack_sdk==3.46.0
+mem0ai==2.2.1
+qdrant-client==1.20.0
+fastembed==0.9.1
+spacy==3.8.18
+sentence-transformers==6.2.0
+# torch comes from the CPU index (see install.sh): the embedding model runs on the CPU, the GPU belongs to Qwen.

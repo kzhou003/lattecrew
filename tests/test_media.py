@@ -174,9 +174,6 @@ class Tests(unittest.TestCase):
         self.assertEqual(len(SEEN), 1)
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=1)
-
 
 class Sharing(unittest.TestCase):
     def setUp(self):
@@ -302,3 +299,146 @@ class ChatTools(unittest.TestCase):
         self.assertEqual(title, "T")
         self.assertEqual(body, "Hello\nWorld")
 
+
+class FakeMem0:
+    """Behaves like mem0.Memory for what chat_memory uses: add/search/get_all/delete/delete_all with filters."""
+    def __init__(self, extract=None):
+        self.items, self.adds = [], []
+        self.extract = extract or (lambda text: [text])
+
+    def add(self, messages, user_id, metadata=None, infer=True):
+        self.adds.append((messages, user_id, metadata, infer))
+        text = messages[-1]["content"]
+        out = []
+        for fact in (self.extract(text) if infer else [text]):
+            item = {"id": f"m{len(self.items)}", "memory": fact, "user_id": user_id,
+                    "created_at": f"2026-11-0{1 + len(self.items) % 9}T00:00:00", "metadata": dict(metadata or {})}
+            self.items.append(item); out.append({**item, "event": "ADD"})
+        return {"results": out}
+
+    def _match(self, item, filters):
+        return all((item["user_id"] if k == "user_id" else item["metadata"].get(k)) == v for k, v in filters.items())
+
+    def search(self, query, filters, top_k, threshold):
+        return {"results": [i for i in self.items if self._match(i, filters)][:top_k]}
+
+    def get_all(self, filters, top_k):
+        return {"results": [i for i in self.items if self._match(i, filters)][:top_k]}
+
+    def delete(self, memory_id):
+        self.items = [i for i in self.items if i["id"] != memory_id]
+
+    def delete_all(self, user_id):
+        self.items = [i for i in self.items if i["user_id"] != user_id]
+
+
+import chat_memory as cm
+
+
+class Memory(unittest.TestCase):
+    def setUp(self):
+        SEEN.clear()
+        RUNNING[0] = "qwen3.8"
+        self.slack = Slack()
+        self.mem0 = FakeMem0()
+        self.loaded = [True]
+        self.memory = cm.ChatMemory(lambda: self.loaded[0], backend=self.mem0, home=TMP / f"mem{time.time()}")
+        self.bot = m.ChatBot(self.slack, "OWNER", allowed="*", team="T1", bot_user="UBOT", memory=self.memory)
+
+    def drain(self):
+        deadline = time.time() + 3
+        while self.memory.pending.unfinished_tasks and time.time() < deadline:
+            time.sleep(0.02)
+
+    def dm(self, text, user="FRIEND"):
+        self.bot.handle(event(text, user=user, team="T1", type="message", channel_type="im"))
+
+    def test_learns_the_users_words_only_after_answering(self):
+        self.dm("以后回答我用中文，我在准备推理方向的面试")
+        self.drain()
+        messages, user_id, meta, infer = self.mem0.adds[0]
+        self.assertEqual(messages, [{"role": "user", "content": "以后回答我用中文，我在准备推理方向的面试"}])
+        self.assertEqual((user_id, meta["visibility"], infer), ("slack-FRIEND", "dm", True))
+        self.assertTrue(self.slack.posts[-1]["text"].startswith("ANSWER"))
+
+    def test_recalled_memories_go_into_the_system_prompt(self):
+        self.memory.backend.add([{"role": "user", "content": "User prefers answers in Chinese"}], "slack-FRIEND",
+                                {"visibility": "dm"}, infer=False)
+        self.dm("什么是 KV cache？")
+        system = SEEN[0][1]["messages"][0]["content"]
+        self.assertIn("User prefers answers in Chinese", system)
+
+    def test_dm_memories_stay_out_of_channels_and_other_users(self):
+        add = self.memory.backend.add
+        add([{"role": "user", "content": "PRIVATE fact"}], "slack-FRIEND", {"visibility": "dm"}, infer=False)
+        add([{"role": "user", "content": "CHANNEL fact"}], "slack-FRIEND", {"visibility": "channel"}, infer=False)
+        add([{"role": "user", "content": "OTHER user fact"}], "slack-OTHER", {"visibility": "channel"}, infer=False)
+        self.bot.handle(event("<@UBOT> hello there", user="FRIEND", team="T1"))
+        system = SEEN[0][1]["messages"][0]["content"]
+        self.assertIn("CHANNEL fact", system)
+        self.assertNotIn("PRIVATE", system)
+        self.assertNotIn("OTHER", system)
+        self.assertIn("别人也看得到", system)
+
+    def test_secrets_are_redacted_and_leaks_deleted(self):
+        self.assertEqual(cm.redact("my key sk-abcdef123456 ok"), "my key [REDACTED] ok")
+        self.assertEqual(cm.redact("密码是 hunter2 别说"), "密码是 [REDACTED] 别说")
+        self.assertIn("[REDACTED]", cm.redact("token: xoxb-1234567890-abc"))
+        self.mem0.extract = lambda text: ["User likes tea", "User's token is xoxp-1234567890-zz"]
+        self.dm("I like tea, my slack token is xoxp-1234567890-zz")
+        self.drain()
+        sent = self.mem0.adds[0][0][0]["content"]
+        self.assertNotIn("xoxp-1234567890", sent)
+        self.assertEqual([i["memory"] for i in self.mem0.items], ["User likes tea"])
+
+    def test_waits_for_qwen_instead_of_loading_it(self):
+        cm.POLL_SECS = 0.05
+        self.loaded[0] = False
+        self.memory.learn("FRIEND", "I am training for a marathon", True)
+        time.sleep(0.3)
+        self.assertEqual(self.mem0.adds, [])                   # never loads Qwen just to remember
+        self.assertNotIn("/v1/chat/completions", [p for p, _ in SEEN])
+        self.loaded[0] = True
+        self.drain()
+        self.assertEqual(self.mem0.adds[0][0][0]["content"], "I am training for a marathon")
+
+    def test_commands_list_forget_pause_and_note(self):
+        self.dm("remember: 我的狗叫豆豆")
+        self.dm("记住：I use Neovim")
+        self.assertEqual([i["memory"] for i in self.mem0.items], ["我的狗叫豆豆", "I use Neovim"])
+        self.assertEqual(SEEN, [])                             # commands never call the LLM
+        self.dm("memory")
+        listing = self.slack.posts[-1]["text"]
+        self.assertIn("1. 我的狗叫豆豆", listing)
+        self.assertIn("2. I use Neovim", listing)
+        self.dm("forget 1")
+        self.assertEqual([i["memory"] for i in self.mem0.items], ["I use Neovim"])
+        self.dm("memory off")
+        self.dm("一个足够长的普通问题")
+        self.drain()
+        self.assertEqual(len(self.mem0.adds), 2)               # the two notes; nothing learned while paused
+        self.assertNotIn("Neovim", SEEN[-1][1]["messages"][0]["content"])
+        self.dm("memory on")
+        self.dm("forget all")
+        self.assertEqual(self.mem0.items, [])
+        self.dm("remember: password is hunter2")
+        self.assertIn("不会记", self.slack.posts[-1]["text"])
+
+    def test_listing_is_dm_only_and_pause_survives_restart(self):
+        self.bot.handle(event("<@UBOT> memory", user="FRIEND", team="T1"))
+        self.assertIn("只在私信", self.slack.posts[-1]["text"])
+        self.dm("memory off")
+        again = cm.ChatMemory(lambda: True, backend=FakeMem0(), home=self.memory.home)
+        self.assertIn("FRIEND", again.paused)
+
+    def test_bot_works_when_memory_is_down(self):
+        class Broken(FakeMem0):
+            def search(self, *a, **k):
+                raise ConnectionError("qdrant down")
+        self.memory.backend = Broken()
+        self.dm("still answer me please")
+        self.assertTrue(self.slack.posts[-1]["text"].startswith("ANSWER"))
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=1)
