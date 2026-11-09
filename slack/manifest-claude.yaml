@@ -1,5 +1,5 @@
 display_information:
-  name: latte
+  name: claude
   description: latte machine bot, Claude Code dev team. AI agent with persistent memory, scheduled jobs, and multi-session orchestration
   background_color: "#1a1a2e"
 
@@ -9,10 +9,10 @@ features:
     messages_tab_enabled: true
     messages_tab_read_only_enabled: false
   bot_user:
-    display_name: latte
+    display_name: claude
     always_online: true
   slash_commands:
-    - command: /latte
+    - command: /claude
       description: Dashboard access and channel tracking
       usage_hint: "dashboard [duration] | #channel"
       should_escape: true

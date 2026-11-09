@@ -14,7 +14,7 @@ This repo holds the ready-to-use scripts, service files and configs that set it 
 Phone / Slack / terminal
         │
         ▼
-Kiro Crew gateways ── Mac: @claude, @codex        latte: @claude, @qwen
+Kiro Crew gateways ── Mac: @codex (+ claude Bot)    latte: @claude, @qwen
         │
         ▼
 Agent harness ─────── Claude Code · OpenCode · Codex CLI

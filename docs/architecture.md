@@ -5,7 +5,7 @@
 | Layer | Component | Where | Measured cost |
 |---|---|---|---|
 | Front door | Slack apps, one per bot; phone or terminal | Slack | – |
-| Gateway | Kiro Crew: one gateway per Slack identity; Bots are source-defined conductors | Mac (`@claude`, `@codex`), latte (`@claude`, `@qwen`) | `@qwen` turn 20.7 s → 10.8 s after the prefix fix |
+| Gateway | Kiro Crew: one gateway per Slack identity; Bots are source-defined conductors | Mac (`@codex` in Slack, plus a `claude` Bot in the dashboard), latte (`@claude`, `@qwen`) | `@qwen` turn 20.7 s → 10.8 s after the prefix fix |
 | Harness | Claude Code, OpenCode, Codex CLI | both | Claude Code ~3 s start-up per call; OpenCode ~2 s |
 | Transport | MCP over SSH on Tailscale | Mac → latte | new MCP session 459 ms, live session 10 ms |
 | Jobs | `crewd`: queue, worktrees, budgets, GPU lock, ledger, Landlock | latte | tools 0.8% of a local job |

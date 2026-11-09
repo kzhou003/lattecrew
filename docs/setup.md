@@ -60,14 +60,18 @@ Installs to `~/latte-crew/`, links `~/.local/bin/crew`, starts the `crewd` user 
 
 Kiro Crew runs one gateway per Slack identity.
 
-**Mac gateway (`@claude` and the `@codex` Bot).** The Kiro desktop app owns this gateway.
-1. Use the Claude Code harness: `kirocrew config set agent.acp_backend claude` and `kirocrew config set agent.member_acp_backend claude`.
-2. Give it the crew tools: `gateways/mac/install.sh`, merge the printed `mcp.json` into `~/.kiro/crew/mcp.json`, then `kirocrew setup --agent-only`.
-3. A Bot chats through a conductor that mounts no user MCP. To let a Bot delegate, put [`gateways/mac/claude-bot-CLAUDE.md`](../gateways/mac/claude-bot-CLAUDE.md) in `~/.kiro/crew/workspace-member-<bot>/CLAUDE.md` and run, in that directory, `claude mcp add -s local latte-crew ~/.local/bin/latte-crew-mcp`.
-4. Codex Bot: `kirocrew config set agents.<bot>.acp_backend codex`.
-5. Media Bots on the Mac (optional): in the Bot's workspace, `claude mcp add -s local latte-media ~/.local/bin/latte-media-mcp image|speech|wan`.
+**Mac gateway (`@codex` in Slack, plus a `claude` Bot).** The Kiro desktop app owns this gateway.
+1. Create the two Bots: `kirocrew agent create --name codex --display-name codex` and `kirocrew agent create --name claude --display-name claude`.
+2. Pin each Bot's harness in `~/.kiro/crew/config.json`: `agents.codex.acp_backend = "codex"`, `agents.claude.acp_backend = "claude"` (the CLI has no flag for it).
+3. **Set the gateway default to Codex**: `kirocrew config set agent.acp_backend codex`. Kiro applies a Bot's own `acp_backend` only to its dashboard DM and its workers. Slack threads are not tied to a Bot, so they run on the gateway default; without this step `@codex` in Slack is answered by Claude Code.
+4. Bind Slack to the codex Bot: in `config.json`, set `slack.channels.<DM id>.agent` and `slack.channels.<channel id>.agent` to `codex` (not settable from the CLI), and `kirocrew config set slack.command codex`.
+5. Let both Bots dispatch to latte: `gateways/mac/install.sh`; copy [`gateways/mac/claude-bot-CLAUDE.md`](../gateways/mac/claude-bot-CLAUDE.md) to `~/.kiro/crew/workspace-member-claude/CLAUDE.md` and run `claude mcp add -s local latte-crew ~/.local/bin/latte-crew-mcp` in that directory; copy [`gateways/mac/codex-bot-AGENTS.md`](../gateways/mac/codex-bot-AGENTS.md) to `~/.kiro/crew/workspace-member-codex/AGENTS.md` and run `codex mcp add latte-crew -- ~/.local/bin/latte-crew-mcp`. Bot conductors mount no MCP from `mcp.json`, so the per-harness registration is what reaches them.
+6. Media Bots on the Mac (optional): in the Bot's workspace, `claude mcp add -s local latte-media ~/.local/bin/latte-media-mcp image|speech|wan`.
+7. Restart: the app-owned gateway refuses `kirocrew restart`; use the app (Settings → About → Restart gateway) or `curl -X POST "http://127.0.0.1:5476/api/restart?token=$(kirocrew token | head -1 | sed 's/.*token=//')"`.
 
-**latte gateway (`@claude` on the GPU machine).** A system service:
+**Check:** DM `@codex` in Slack, then confirm the session ran on Codex: the newest `~/.kiro/crew/usage/tokens/<date>.jsonl` row for that thread has `"provider": "codex"`.
+
+**latte gateway (`@claude` on the GPU machine).** A system service, slash command `/claude` (`kirocrew config set slack.command claude`):
 ```bash
 ssh latte
 kirocrew sandbox install-profile     # AppArmor profile (asks for sudo); ~/.kiro must not be group-writable

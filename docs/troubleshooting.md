@@ -16,3 +16,4 @@
 | `pkill -f pattern` over ssh kills your own ssh | the remote command line contains the pattern | put the kill in a script file and run that |
 | Deleting a model directory frees no disk | HF cache keeps weights in `hub/blobs/` | remove the unreferenced blobs too |
 | `claude-qwen` compacts again and again, then stops with a thrashing error | 65K context minus Claude Code's prompt, output reserve and compaction margin leaves ~20K to work with | serve Qwen at 128K (FP8 KV cache) and set the window in `claude-qwen`; both are the defaults now |
+| `@codex` in Slack replies, but commits and PRs say Claude Code | a Bot's `acp_backend` applies only to its dashboard DM and workers; Slack threads run on the gateway default `agent.acp_backend` | set the Mac gateway default to `codex` and pin the dashboard `claude` Bot to `claude` (setup, phase 3) |

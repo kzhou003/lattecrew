@@ -20,6 +20,7 @@ The main latte gateway (`@claude`) is the system service from `kirocrew service 
 | `mac/latte-crew-mcp` | MCP stdio bridge: `ssh latte python3 ~/latte-crew/crew.py mcp` |
 | `mac/latte_media_mcp.py` | MCP server for one media model (`image`, `speech`, `wan`); saves results to `~/Downloads/LatteCrew` |
 | `mac/mcp.json.example` | the `latte-crew` server entry for `~/.kiro/crew/mcp.json` |
-| `mac/claude-bot-CLAUDE.md` | makes a Mac Bot delegate repo work to latte |
+| `mac/claude-bot-CLAUDE.md` | instructions for the `claude` Bot: delegate repo work to latte (`~/.kiro/crew/workspace-member-claude/CLAUDE.md`) |
+| `mac/codex-bot-AGENTS.md` | the same for the `codex` Bot; Codex reads `AGENTS.md` (`workspace-member-codex/AGENTS.md`) |
 | `mac/opencode.mac.json` | OpenCode on the Mac using latte's models through the tunnel |
 | `mac/dev.lattecrew.models.plist` | LaunchAgent for the tunnel 127.0.0.1:18100 → latte:8100 |

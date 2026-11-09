@@ -1,6 +1,6 @@
 display_information:
-  name: KiroCrew-latte
-  description: AI agent management layer with persistent memory, scheduled jobs, and multi-session orchestration
+  name: codex
+  description: Codex on the Mac Kiro Crew gateway. Plans and dispatches work to latte.
   background_color: "#1a1a2e"
 
 features:
@@ -9,10 +9,10 @@ features:
     messages_tab_enabled: true
     messages_tab_read_only_enabled: false
   bot_user:
-    display_name: KiroCrew-latte
+    display_name: codex
     always_online: true
   slash_commands:
-    - command: /kirocrew-latte
+    - command: /codex
       description: Dashboard access and channel tracking
       usage_hint: "dashboard [duration] | #channel"
       should_escape: true
