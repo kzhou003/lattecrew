@@ -11,6 +11,7 @@ import re
 import media_bot as m
 
 SEEN = []
+RUNNING = ["qwen3.8"]
 
 
 class Fake(BaseHTTPRequestHandler):
@@ -22,9 +23,16 @@ class Fake(BaseHTTPRequestHandler):
             body = json.loads(raw)
         SEEN.append((self.path, body))
         data = json.dumps({"data": [{"b64_json": base64.b64encode(b"PNG").decode()}]}).encode() if "images" in self.path else b"WAV"
+        if "chat/completions" in self.path:
+            data = json.dumps({"choices": [{"message": {"content": "ANSWER " + body["messages"][-1]["content"]}}]}).encode()
         if "videos" in self.path:
             data = b"MP4"
         self.send_response(200); self.end_headers(); self.wfile.write(data)
+
+    def do_GET(self):
+        if self.path == "/running":
+            data = json.dumps({"running": [{"model": RUNNING[0], "state": "ready"}] if RUNNING[0] else []}).encode()
+            self.send_response(200); self.end_headers(); self.wfile.write(data)
 
     def log_message(self, *_):
         pass
@@ -44,6 +52,11 @@ class Slack:
 
     def files_upload_v2(self, **kw):
         self.files.append(kw)
+
+    def conversations_replies(self, **kw):
+        return {"messages": self.thread}
+
+    thread = []
 
     def reactions_add(self, **kw):
         self.reactions.append(kw["name"])
@@ -183,4 +196,42 @@ class Sharing(unittest.TestCase):
         self.assertEqual(m.parse_limits("wan=1,image=5")["wan"], 1)
         self.assertEqual(m.parse_allowed(" * "), "*")
         self.assertEqual(m.parse_allowed("U1, U2"), {"U1", "U2"})
+
+
+class Chat(unittest.TestCase):
+    def setUp(self):
+        SEEN.clear()
+        RUNNING[0] = "qwen3.8"
+        self.slack = Slack()
+        self.bot = m.ChatBot(self.slack, "OWNER", allowed="*", team="T1", bot_user="UBOT")
+
+    def test_answers_in_the_thread_with_a_system_prompt(self):
+        self.bot.handle(event("<@UBOT> 什么是 KV cache？", user="FRIEND", team="T1"))
+        path, body = SEEN[0]
+        self.assertEqual(path, "/v1/chat/completions")
+        self.assertEqual(body["messages"][0]["role"], "system")
+        self.assertEqual(body["messages"][-1], {"role": "user", "content": "什么是 KV cache？"})
+        self.assertFalse(body["chat_template_kwargs"]["enable_thinking"])
+        self.assertTrue(self.slack.posts[-1]["text"].startswith("ANSWER"))
+
+    def test_thread_history_alternates_roles(self):
+        self.slack.thread = [{"user": "FRIEND", "text": "<@UBOT> hi"}, {"bot_id": "B1", "user": "UBOT", "text": "hello"},
+                             {"user": "FRIEND", "text": "<@UBOT> and then? think=on"}]
+        self.bot.handle(event("<@UBOT> and then? think=on", user="FRIEND", team="T1", thread_ts="1.0"))
+        roles = [x["role"] for x in SEEN[0][1]["messages"]]
+        self.assertEqual(roles, ["system", "user", "assistant", "user"])
+        self.assertEqual(SEEN[0][1]["messages"][-1]["content"], "and then?")
+        self.assertTrue(SEEN[0][1]["chat_template_kwargs"]["enable_thinking"])
+
+    def test_loads_qwen_under_the_gpu_lock_when_another_model_is_up(self):
+        RUNNING[0] = "wan2.2-ti2v"
+        self.bot.handle(event("hello", user="OWNER", channel_type="im", type="message"))
+        self.assertTrue(any("加载" in p["text"] for p in self.slack.posts))
+        self.assertEqual(SEEN[0][0], "/v1/chat/completions")
+
+    def test_help_and_strangers(self):
+        self.bot.handle(event("<@UBOT> help", user="FRIEND", team="T1"))
+        self.bot.handle(event("<@UBOT> hi", user="X", user_team="T9"))
+        self.assertEqual(SEEN, [])
+        self.assertEqual(len(self.slack.posts), 1)
 

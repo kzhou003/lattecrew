@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Slack bots for models that are not agents: @z-image, @qwen-tts and @wan.
+"""Slack bots for models that are not agents: @z-image, @qwen-tts, @wan and @qwen-chat.
 
 No LLM is involved. A message from an allowed user becomes one model request, and
 the file goes back to the thread. The owner is always allowed and unlimited; others
@@ -47,6 +47,16 @@ HELP = {
     "image": "发一句图片描述就行。可选：`size=1344x768`、`seed=42`、`steps=9`。中文长标题容易写错，适合配图，不适合文字设计。",
     "speech": "发一段文字就行。可选：`voice=vivian`（可选 " + "、".join(sorted(VOICES)) + "）、`style=用温柔的语气说`。",
 }
+HELP["chat"] = ("直接问就行，我是跑在本地 RTX 5090 上的 Qwen3.8。私信里每条都会回复；频道里请 @我。"
+                "同一个线程里我记得前面的对话。加上 `think=on` 会先深度思考再回答（更慢）。我没有工具，不能上网、读文件或执行命令。")
+CHAT_MODEL = "qwen3.8"
+CHAT_MAX_TURNS = 20          # thread messages sent as context
+CHAT_MAX_CHARS = 24000       # context budget, counted from the newest message back
+CHAT_MAX_QUESTION = 8000
+CHAT_SYSTEM = ("你是 qwen-chat，LatteCrew Slack 工作区里的助手，运行在本地 RTX 5090 上的 Qwen3.8。"
+               "用提问者的语言回答，清楚、简洁。你没有工具，不能上网、读文件或执行命令；不知道就直说。"
+               "回复会显示在 Slack 里，可以用简单的 Markdown：粗体、列表、代码块。")
+THINK = re.compile(r"(?:^|\s)think=(on|off)\b", re.I)
 for _kind, _spec in VIDEO.items():
     HELP[_kind] = (f"发一句视频描述就行。可选：`size={_spec['size']}`（可选 " + "、".join(sorted(_spec["sizes"])) +
                    f"）、`seconds=5`（1 到 {MAX_VIDEO_SECONDS} 秒）、`seed=42`。生成通常要 {_spec['eta']}。")
@@ -88,6 +98,23 @@ def post(path, body, timeout=300):
                                      headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read()
+
+
+def qwen_loaded():
+    """True when llama-swap already has the chat model loaded, so a chat needs no GPU lock or swap."""
+    try:
+        with urllib.request.urlopen(GATEWAY + "/running", timeout=5) as response:
+            running = json.loads(response.read()).get("running", [])
+    except Exception:
+        return False
+    return any(m.get("model") == CHAT_MODEL and m.get("state") == "ready" for m in running)
+
+
+def chat_completion(messages, think=False):
+    body = {"model": CHAT_MODEL, "messages": messages, "max_tokens": 8192 if think else 2048,
+            "chat_template_kwargs": {"enable_thinking": think}}
+    reply = json.loads(post("/v1/chat/completions", body, timeout=900))
+    return (reply["choices"][0]["message"].get("content") or "").strip()
 
 
 def stamp(ext):
@@ -182,7 +209,7 @@ def build_request(kind, text):
     return generate_speech, {"text": prompt, "voice": voice, "style": options.get("style")}
 
 
-DEFAULT_DAILY = {"image": 30, "speech": 30, "wan": 3}
+DEFAULT_DAILY = {"image": 30, "speech": 30, "wan": 3, "chat": 100}
 
 
 def parse_allowed(value):
@@ -304,6 +331,78 @@ class MediaBot:
             self.reply(event, f"生成失败：{type(err).__name__}")
 
 
+class ChatBot(MediaBot):
+    """@qwen-chat: plain chat with the local Qwen in Slack threads. No tools, same access rules and quotas."""
+
+    def __init__(self, client, owner, allowed=None, team=None, limits=None, bot_user=None):
+        super().__init__("chat", client, owner, allowed, team, limits)
+        self.bot_user = bot_user
+
+    def history(self, event):
+        """The thread so far as chat messages, newest last, within the context budget."""
+        thread = event.get("thread_ts")
+        msgs = [event]
+        if thread:
+            try:
+                msgs = self.client.conversations_replies(channel=event["channel"], ts=thread, limit=100)["messages"]
+            except Exception:
+                log.warning("could not read thread history", exc_info=True)
+        turns, used = [], 0
+        for m in reversed(msgs[-CHAT_MAX_TURNS:]):
+            text = THINK.sub("", MENTION.sub("", m.get("text", ""))).strip()
+            if not text:
+                continue
+            if used + len(text) > CHAT_MAX_CHARS and turns:
+                break
+            used += len(text)
+            mine = bool(m.get("bot_id")) or (self.bot_user and m.get("user") == self.bot_user)
+            turns.append({"role": "assistant" if mine else "user", "content": text})
+        turns.reverse()
+        while turns and turns[0]["role"] == "assistant":
+            turns.pop(0)
+        return turns
+
+    def handle(self, event):
+        if not self.wanted(event) or self.duplicate((event["channel"], event["ts"])):
+            return
+        text = MENTION.sub("", event.get("text", "")).strip()
+        if not text or text.lower() in ("help", "帮助"):
+            self.reply(event, HELP["chat"])
+            return
+        if len(text) > CHAT_MAX_QUESTION:
+            self.reply(event, f"这条太长了，一次最多 {CHAT_MAX_QUESTION} 个字符。")
+            return
+        user = event.get("user")
+        refusal = self.claim(user)
+        if refusal:
+            self.reply(event, refusal)
+            return
+        try:
+            self.answer(event, text)
+        finally:
+            self.release(user)
+
+    def answer(self, event, text):
+        match = THINK.search(text)
+        think = bool(match and match.group(1).lower() == "on")
+        messages = [{"role": "system", "content": CHAT_SYSTEM}] + self.history(event)
+        self.react(event, "hourglass_flowing_sand")
+        try:
+            if qwen_loaded():
+                answer = chat_completion(messages, think)
+            else:
+                with GpuLease(on_wait=lambda: self.reply(event, "GPU 正在生成图片或视频，我排队等它结束。")):
+                    self.reply(event, "正在把 Qwen 加载到 GPU 上，第一条大约要等一分钟。")
+                    answer = chat_completion(messages, think)
+            self.reply(event, answer[:39000] or "（这次没有生成内容，换个问法再试一次。）")
+            self.react(event, "white_check_mark")
+        except Busy:
+            self.reply(event, f"GPU 忙了超过 {GPU_WAIT_SECS // 60} 分钟，这次先放弃。稍后再发一次。")
+        except Exception as err:
+            log.exception("chat request failed")
+            self.reply(event, f"回答失败：{type(err).__name__}")
+
+
 def load_env(path):
     values = {}
     for line in Path(path).read_text().splitlines():
@@ -322,16 +421,20 @@ def serve(env_path):
     env = load_env(env_path)
     owner, clients = env["OWNER_ID"], []
     allowed, limits = parse_allowed(env.get("ALLOWED_USERS")), parse_limits(env.get("DAILY_LIMITS"))
-    for kind, prefix in (("image", "Z_IMAGE"), ("speech", "QWEN_TTS"), ("wan", "WAN")):
+    for kind, prefix in (("image", "Z_IMAGE"), ("speech", "QWEN_TTS"), ("wan", "WAN"), ("chat", "QWEN_CHAT")):
         if not env.get(f"{prefix}_BOT_TOKEN") or env[f"{prefix}_BOT_TOKEN"].endswith("..."):
             log.info("%s has no token yet, skipping", kind)
             continue
         web = WebClient(token=env[f"{prefix}_BOT_TOKEN"])
         try:
-            team = web.auth_test().get("team_id")
+            me = web.auth_test()
+            team, bot_user = me.get("team_id"), me.get("user_id")
         except Exception:
-            team = None
-        bot = MediaBot(kind, web, owner, allowed, team, limits)
+            team = bot_user = None
+        if kind == "chat":
+            bot = ChatBot(web, owner, allowed, team, limits, bot_user)
+        else:
+            bot = MediaBot(kind, web, owner, allowed, team, limits)
         socket = SocketModeClient(app_token=env[f"{prefix}_APP_TOKEN"], web_client=web)
 
         def listener(client, request, bot=bot):
