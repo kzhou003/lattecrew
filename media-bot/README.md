@@ -1,6 +1,6 @@
 # Media bots
 
-`media_bot.py` connects three Slack apps (`@z-image`, `@qwen-tts`, `@wan`) over Socket Mode. A message to a bot becomes one request to llama-swap, under the shared GPU lock; the result is uploaded back to the thread. No LLM is involved. Only `OWNER_ID` may use them.
+`media_bot.py` connects three Slack apps (`@z-image`, `@qwen-tts`, `@wan`) over Socket Mode. A message to a bot becomes one request to llama-swap, under the shared GPU lock; the result is uploaded back to the thread. No LLM is involved. The owner (`OWNER_ID`) is always allowed and unlimited. Others come from `ALLOWED_USERS`: `*` for every member of this workspace (users from other workspaces via Slack Connect are ignored), or a comma list of user IDs. Each non-owner gets a daily quota per bot (`DAILY_LIMITS`, default 30 images, 30 speech clips, 3 videos) and one request at a time; counts reset when the service restarts.
 
 ```bash
 ./install.sh                         # first run writes ~/.config/latte-media/env from env.example

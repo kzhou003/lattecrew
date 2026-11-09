@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Slack bots for models that are not agents: @z-image, @qwen-tts and @wan.
 
-No LLM is involved. A message from the owner becomes one model request, and the
-file goes back to the thread. The GPU lock is shared with crewd, so a request
+No LLM is involved. A message from an allowed user becomes one model request, and
+the file goes back to the thread. The owner is always allowed and unlimited; others
+come from ALLOWED_USERS (a comma list of Slack user IDs, or `*` for every member of
+this workspace) and get a daily quota per bot plus one request at a time. The GPU lock is shared with crewd, so a request
 waits for a running Qwen job instead of evicting the model halfway through.
 
     media_bot.py serve                   run the configured bots
@@ -180,10 +182,63 @@ def build_request(kind, text):
     return generate_speech, {"text": prompt, "voice": voice, "style": options.get("style")}
 
 
+DEFAULT_DAILY = {"image": 30, "speech": 30, "wan": 3}
+
+
+def parse_allowed(value):
+    """`*` -> "*" (every member of this workspace); otherwise a set of user IDs."""
+    value = (value or "").strip()
+    if value == "*":
+        return "*"
+    return {v.strip() for v in value.split(",") if v.strip()}
+
+
+def parse_limits(value):
+    limits = dict(DEFAULT_DAILY)
+    for part in (value or "").split(","):
+        if "=" in part:
+            k, v = part.split("=", 1)
+            if k.strip() and v.strip().isdigit():
+                limits[k.strip()] = int(v)
+    return limits
+
+
 class MediaBot:
-    def __init__(self, kind, client, owner):
+    def __init__(self, kind, client, owner, allowed=None, team=None, limits=None):
         self.kind, self.client, self.owner = kind, client, owner
+        self.allowed = allowed if allowed == "*" else set(allowed or ())
+        self.team = team            # this workspace; with `*`, events from other teams are ignored
+        self.limit = (limits or DEFAULT_DAILY).get(kind, 0)
         self.seen, self.seen_lock = {}, threading.Lock()
+        self.usage, self.busy = {}, set()   # (day, user) -> count; users with a request running
+
+    def allowed_user(self, event):
+        user = event.get("user")
+        if user == self.owner:
+            return True
+        if self.allowed == "*":
+            team = event.get("user_team") or event.get("team")
+            return bool(user) and (self.team is None or team is None or team == self.team)
+        return user in self.allowed
+
+    def claim(self, user):
+        """Count one request for a non-owner. Returns an error message or None."""
+        if user == self.owner:
+            return None
+        day = time.strftime("%Y-%m-%d")
+        with self.seen_lock:
+            if user in self.busy:
+                return "你上一个请求还在生成，等它完成再发下一个。"
+            used = self.usage.get((day, user), 0)
+            if used >= self.limit:
+                return f"今天的额度用完了（每人每天 {self.limit} 次），明天再来。"
+            self.usage[(day, user)] = used + 1
+            self.busy.add(user)
+        return None
+
+    def release(self, user):
+        with self.seen_lock:
+            self.busy.discard(user)
 
     def duplicate(self, key):
         # Slack can deliver one message as both `message` and `app_mention`, and it retries.
@@ -196,7 +251,7 @@ class MediaBot:
         return False
 
     def wanted(self, event):
-        if event.get("bot_id") or event.get("subtype") or event.get("user") != self.owner:
+        if event.get("bot_id") or event.get("subtype") or not self.allowed_user(event):
             return False
         return event.get("type") == "app_mention" or event.get("channel_type") == "im"
 
@@ -217,6 +272,17 @@ class MediaBot:
         except ValueError as err:
             self.reply(event, str(err))
             return
+        user = event.get("user")
+        refusal = self.claim(user)
+        if refusal:
+            self.reply(event, refusal)
+            return
+        try:
+            self.run(event, func, kwargs)
+        finally:
+            self.release(user)
+
+    def run(self, event, func, kwargs):
         self.react(event, "hourglass_flowing_sand")
         if self.kind in VIDEO:
             self.reply(event, f"开始生成视频，通常要 {VIDEO[self.kind]['eta']}。")
@@ -255,12 +321,17 @@ def serve(env_path):
 
     env = load_env(env_path)
     owner, clients = env["OWNER_ID"], []
+    allowed, limits = parse_allowed(env.get("ALLOWED_USERS")), parse_limits(env.get("DAILY_LIMITS"))
     for kind, prefix in (("image", "Z_IMAGE"), ("speech", "QWEN_TTS"), ("wan", "WAN")):
         if not env.get(f"{prefix}_BOT_TOKEN") or env[f"{prefix}_BOT_TOKEN"].endswith("..."):
             log.info("%s has no token yet, skipping", kind)
             continue
         web = WebClient(token=env[f"{prefix}_BOT_TOKEN"])
-        bot = MediaBot(kind, web, owner)
+        try:
+            team = web.auth_test().get("team_id")
+        except Exception:
+            team = None
+        bot = MediaBot(kind, web, owner, allowed, team, limits)
         socket = SocketModeClient(app_token=env[f"{prefix}_APP_TOKEN"], web_client=web)
 
         def listener(client, request, bot=bot):

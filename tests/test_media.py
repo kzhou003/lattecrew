@@ -144,3 +144,43 @@ class Tests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
+
+
+class Sharing(unittest.TestCase):
+    def setUp(self):
+        SEEN.clear()
+        self.slack = Slack()
+
+    def test_listed_users_are_served_and_others_ignored(self):
+        bot = m.MediaBot("image", self.slack, "OWNER", allowed={"FRIEND"})
+        bot.handle(event("a cat", user="FRIEND"))
+        bot.handle(event("a dog", user="STRANGER"))
+        self.assertEqual([b["prompt"] for _, b in SEEN], ["a cat"])
+
+    def test_star_means_this_workspace_only(self):
+        bot = m.MediaBot("image", self.slack, "OWNER", allowed="*", team="T1")
+        bot.handle(event("a cat", user="ANYONE", team="T1"))
+        bot.handle(event("a dog", user="GUEST", user_team="T2"))
+        self.assertEqual([b["prompt"] for _, b in SEEN], ["a cat"])
+
+    def test_daily_quota_for_others_not_for_the_owner(self):
+        bot = m.MediaBot("image", self.slack, "OWNER", allowed="*", team="T1", limits={"image": 2})
+        for i in range(3):
+            bot.handle(event(f"cat {i}", user="FRIEND", team="T1"))
+        for i in range(3):
+            bot.handle(event(f"owner {i}", user="OWNER"))
+        self.assertEqual(len(SEEN), 5)
+        self.assertTrue(any("额度用完" in p["text"] for p in self.slack.posts))
+
+    def test_one_request_at_a_time_per_user(self):
+        bot = m.MediaBot("image", self.slack, "OWNER", allowed="*", team="T1")
+        self.assertIsNone(bot.claim("FRIEND"))
+        self.assertIn("还在生成", bot.claim("FRIEND"))
+        bot.release("FRIEND")
+        self.assertIsNone(bot.claim("FRIEND"))
+
+    def test_limits_parse(self):
+        self.assertEqual(m.parse_limits("wan=1,image=5")["wan"], 1)
+        self.assertEqual(m.parse_allowed(" * "), "*")
+        self.assertEqual(m.parse_allowed("U1, U2"), {"U1", "U2"})
+
